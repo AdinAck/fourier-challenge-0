@@ -30,6 +30,8 @@ rtic-monotonics = { git = "https://github.com/rtic-rs/rtic", rev = "1a1237690cf6
 stm32g4xx-hal = { git = "https://github.com/adinack/stm32g4xx-hal", features = [
     "stm32g431",
 ] }
+cookie-cutter = { git = "https://github.com/adinack/embedded-command" }
+dispatch-bundle = { git = "https://github.com/adinack/embedded-command" }
 
 [[bin]]
 name = "main"

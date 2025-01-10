@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 
+mod command;
 mod fmt;
 
 #[cfg(not(feature = "defmt"))]
@@ -19,11 +20,7 @@ mod app {
     const MONO_FREQ: u32 = 31_250;
     stm32_tim2_monotonic!(Mono, MONO_FREQ);
 
-    use hal::{
-        prelude::*,
-        pwr::{self, PwrExt as _},
-        rcc::{self, RccExt as _},
-    };
+    use hal::{prelude::*, pwr, rcc, serial, time};
 
     // const configs
     const VOS_CFG: pwr::VoltageScale = pwr::VoltageScale::Range1 { enable_boost: true };
@@ -57,6 +54,26 @@ mod app {
             .freeze(rcc::Config::pll().pll_cfg(PLL_CFG), pwr_cfg);
 
         fmt::debug!("{}", rcc.clocks);
+
+        let gpioa = ctx.device.GPIOA.split(&mut rcc);
+
+        let usart_cfg = serial::FullConfig::default().baudrate(time::Bps(9600)); // so strange
+
+        // HAL: USART configuration validation should absolutely be const
+
+        let usart1 = fmt::unwrap!(ctx.device.USART1.usart(
+            gpioa.pa9.into_alternate(),
+            gpioa.pa10.into_alternate(),
+            usart_cfg,
+            &mut rcc,
+        ));
+
+        let usart2 = fmt::unwrap!(ctx.device.USART2.usart(
+            gpioa.pa2.into_alternate(),
+            gpioa.pa3.into_alternate(),
+            usart_cfg,
+            &mut rcc
+        ));
 
         // monotonic
         Mono::start(rcc.clocks.apb1_tim_clk.raw());
