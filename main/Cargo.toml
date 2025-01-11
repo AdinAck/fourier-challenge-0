@@ -5,7 +5,14 @@ edition = "2021"
 
 [features]
 default = ["defmt"]
-defmt = ["dep:defmt", "dep:defmt-rtt", "dep:panic-probe", "stm32g4xx-hal/defmt"]
+defmt = [
+    "dep:defmt",
+    "dep:defmt-rtt",
+    "dep:panic-probe",
+    "stm32g4xx-hal/defmt",
+    "cookie-cutter/defmt",
+    "embedded-command/defmt",
+]
 
 [dependencies]
 cortex-m = { version = "0.7.7", features = [
@@ -27,11 +34,16 @@ rtic-monotonics = { git = "https://github.com/rtic-rs/rtic", rev = "1a1237690cf6
     "stm32g431rb",
     "stm32_tim2",
 ] }
+rtic-sync = { git = "https://github.com/rtic-rs/rtic", rev = "1a1237690cf676733579ffde0f507a00950e474e" }
 stm32g4xx-hal = { git = "https://github.com/adinack/stm32g4xx-hal", features = [
     "stm32g431",
 ] }
+# stm32g4xx-hal = { path = "/Users/adinack/Projects/stm32g4xx-hal", features = [
+#     "stm32g431",
+# ] }
 cookie-cutter = { git = "https://github.com/adinack/embedded-command" }
 dispatch-bundle = { git = "https://github.com/adinack/embedded-command" }
+embedded-command = { git = "https://github.com/adinack/embedded-command" }
 
 [[bin]]
 name = "main"
