@@ -68,4 +68,5 @@ debug = [
     "embassy-stm32/defmt",
     "cookie-cutter/defmt",
     "embedded-command/defmt",
+    "common/defmt",
 ]

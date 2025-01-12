@@ -1,11 +1,15 @@
 use heapless::HistoryBuffer;
-use stm32g4xx_hal::time::Instant;
+use rtic_monotonics::Monotonic;
 
 use common::types::{pump::PumpState, temperature::Temperature};
 
+use crate::app::Mono;
+
 pub struct Entry {
-    timestamp: Instant,
+    #[allow(unused)] // unused in example implementation
+    timestamp: <Mono as Monotonic>::Instant,
     temperature: Temperature,
+    #[allow(unused)] // unused in example implementation
     pump_state: PumpState,
 }
 
@@ -25,8 +29,33 @@ impl Model {
         }
     }
 
+    pub fn try_push_pending(&mut self) {
+        let Some(temperature) = self.pending.0 else {
+            return;
+        };
+        let Some(pump_state) = self.pending.1 else {
+            return;
+        };
+
+        self.history.write(Entry {
+            timestamp: Mono::now(),
+            temperature,
+            pump_state,
+        });
+
+        self.pending = (None, None);
+    }
+
     pub fn push_temperature(&mut self, temp: Temperature) {
         self.pending.0.replace(temp);
+
+        self.try_push_pending();
+    }
+
+    pub fn push_pump_state(&mut self, state: PumpState) {
+        self.pending.1.replace(state);
+
+        self.try_push_pending();
     }
 
     pub fn pump_target(&self) -> PumpState {

@@ -13,6 +13,7 @@ defmt = [
     "cookie-cutter/defmt",
     "embedded-command/defmt",
     "heapless/defmt-03",
+    "common/defmt",
 ]
 
 [dependencies]

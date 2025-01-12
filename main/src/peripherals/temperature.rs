@@ -90,7 +90,7 @@ impl TempSensor {
             self.signal.wait().await;
 
             self.transfer_in.peek_buffer(|buf, remaining| {
-                fmt::debug!("buf: {}", buf[..buf.len() - remaining]);
+                fmt::trace!("buf: {}", buf[..buf.len() - remaining]);
 
                 self.command_buf
                     .ingest(buf[..buf.len() - remaining].iter())?;
@@ -154,5 +154,3 @@ impl TempSensor {
         }
     }
 }
-
-unsafe impl Send for TempSensor {}

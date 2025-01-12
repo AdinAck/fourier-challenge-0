@@ -12,7 +12,10 @@ use {defmt_rtt as _, panic_probe as _};
 
 #[rtic::app(device = hal::stm32, peripherals = true)]
 mod app {
-    use crate::{model::Model, peripherals::temperature::TempSensor};
+    use crate::{
+        model::Model,
+        peripherals::{pump::Pump, temperature::TempSensor},
+    };
 
     use super::fmt;
 
@@ -53,13 +56,27 @@ mod app {
         serial::NoDMA,
     >;
 
+    pub type Tx2 = serial::usart::Tx<
+        hal::pac::USART2,
+        gpio::gpiob::PB3<gpio::Alternate<{ gpio::AF7 }>>,
+        serial::NoDMA,
+    >;
+
     pub type TransferIn1 = dma::Transfer<
-        dma::stream::Stream1<hal::pac::DMA1>,
+        dma::stream::Stream0<hal::pac::DMA1>,
         serial::Rx<
             hal::pac::USART1,
             gpio::gpioa::PA10<gpio::Alternate<{ gpio::AF7 }>>,
             serial::DMA,
         >,
+        dma::PeripheralToMemory,
+        &'static mut [u8],
+        dma::transfer::MutTransfer,
+    >;
+
+    pub type TransferIn2 = dma::Transfer<
+        dma::stream::Stream1<hal::pac::DMA1>,
+        serial::Rx<hal::pac::USART2, gpio::gpiob::PB4<gpio::Alternate<{ gpio::AF7 }>>, serial::DMA>,
         dma::PeripheralToMemory,
         &'static mut [u8],
         dma::transfer::MutTransfer,
@@ -72,7 +89,8 @@ mod app {
 
     #[local]
     struct Local {
-        writer: SignalWriter<'static, ()>,
+        writer1: SignalWriter<'static, ()>,
+        writer2: SignalWriter<'static, ()>,
     }
 
     #[init]
@@ -99,6 +117,7 @@ mod app {
             .memory_increment(true);
 
         let gpioa = ctx.device.GPIOA.split(&mut rcc);
+        let gpiob = ctx.device.GPIOB.split(&mut rcc);
 
         let usart_cfg = serial::FullConfig::default()
             .baudrate(time::Bps(9600)) // so strange
@@ -114,13 +133,13 @@ mod app {
         ))
         .split();
 
-        // let (tx2, rx2) = fmt::unwrap!(ctx.device.USART2.usart(
-        //     gpioa.pa2.into_alternate(),
-        //     gpioa.pa3.into_alternate(),
-        //     usart_cfg,
-        //     &mut rcc
-        // ))
-        // .split();
+        let (tx2, rx2) = fmt::unwrap!(ctx.device.USART2.usart(
+            gpiob.pb3.into_alternate(),
+            gpiob.pb4.into_alternate(),
+            usart_cfg,
+            &mut rcc
+        ))
+        .split();
 
         let rx1_buf = {
             static mut BUF: [u8; 256] = [0; 256];
@@ -132,42 +151,75 @@ mod app {
             }
         };
 
-        let transfer_in_1 = streams.1.into_peripheral_to_memory_transfer(
+        let rx2_buf = {
+            static mut BUF: [u8; 256] = [0; 256];
+
+            // SAFETY: exclusive reference only
+            #[allow(static_mut_refs)]
+            unsafe {
+                &mut BUF
+            }
+        };
+
+        let transfer_in_1 = streams.0.into_peripheral_to_memory_transfer(
             rx1.enable_dma(),
             &mut rx1_buf[..],
             dma_cfg,
         );
 
-        let (writer, reader) = {
+        let transfer_in_2 = streams.1.into_peripheral_to_memory_transfer(
+            rx2.enable_dma(),
+            &mut rx2_buf[..],
+            dma_cfg,
+        );
+
+        let (writer1, reader1) = {
             static SIGNAL: Signal<()> = Signal::new();
             SIGNAL.split()
         };
 
-        if let Err(_) = temp::spawn(TempSensor::new(tx1, transfer_in_1, reader)) {
+        let (writer2, reader2) = {
+            static SIGNAL: Signal<()> = Signal::new();
+            SIGNAL.split()
+        };
+
+        if let Err(_) = temp::spawn(TempSensor::new(tx1, transfer_in_1, reader1)) {
             fmt::panic!("Failed to spawn task.")
         }
 
-        // fmt::unwrap!(pump::spawn());
+        if let Err(_) = pump::spawn(Pump::new(tx2, transfer_in_2, reader2)) {
+            fmt::panic!("Failed to spawn task.")
+        }
 
         (
             Shared {
                 model: Model::new(60),
             },
-            Local { writer },
+            Local { writer1, writer2 },
         )
     }
 
-    #[task(binds = USART1, local = [writer])]
+    #[task(binds = USART1, local = [writer1])]
     fn usart1_event(ctx: usart1_event::Context) {
-        ctx.local.writer.write(());
+        ctx.local.writer1.write(());
 
         // terrible
         let usart1 = unsafe { &*hal::pac::USART1::ptr() };
         usart1.icr.write(|w| w.rtocf().set_bit());
     }
 
+    #[task(binds = USART2, local = [writer2])]
+    fn usart2_event(ctx: usart2_event::Context) {
+        ctx.local.writer2.write(());
+
+        // terrible
+        let usart2 = unsafe { &*hal::pac::USART2::ptr() };
+        usart2.icr.write(|w| w.rtocf().set_bit());
+    }
+
     #[task(shared = [model])]
     async fn temp(ctx: temp::Context, mut temp_sensor: TempSensor) {
+        // for testing purposes
         Mono::delay(4u64.secs()).await;
 
         fmt::info!("begin...");
@@ -183,17 +235,21 @@ mod app {
         }
     }
 
-    #[task]
-    async fn pump(_ctx: pump::Context) {
-        loop {
-            // 1. ask model for target pump state
-            // 2. send pump state to pump
-            // 3. validate pump response
-            // 4. report faults
+    #[task(shared = [model])]
+    async fn pump(ctx: pump::Context, mut pump: Pump) {
+        // for testing purposes
+        Mono::delay(4u64.secs()).await;
 
-            fmt::info!("hello!");
+        fmt::info!("begin...");
 
-            Mono::delay(200u64.millis()).await;
+        match pump.run(ctx.shared.model).await {
+            Ok(_) => {
+                // shutdown
+            }
+            Err(fault) => {
+                // handle fault
+                fmt::error!("{}", fault);
+            }
         }
     }
 }

@@ -6,18 +6,14 @@ use crate::types::pump::PumpState;
 // maybe i should make another higher level
 // proc macro which combines bidirectional
 // commands and separates them based on
-// annotations, rather than relying on
-// constants.
+// annotations.
 
-const NOOP_ADDR: u8 = 0xff;
-
-#[derive(vanilla::SerializeIter)]
+#[derive(Clone, Copy, vanilla::SerializeIter)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum ToPeripheral {
     Set(PumpState) = 0xca,
     Get = 0x11,
-
-    NoOp = NOOP_ADDR,
 }
 
 #[derive(vanilla::SerializeIter)]
@@ -25,11 +21,10 @@ pub enum ToPeripheral {
 pub enum FromPeripheral {
     PumpState(PumpState) = 0xaa,
     Fault(Fault) = 0x1f,
-
-    NoOp = NOOP_ADDR,
 }
 
 #[derive(vanilla::SerializeIter)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum Fault {
     Temperature = 0xde,
