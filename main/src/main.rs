@@ -1,8 +1,8 @@
 #![no_std]
 #![no_main]
 
-mod command;
 mod fmt;
+mod model;
 mod peripherals;
 
 #[cfg(not(feature = "defmt"))]
@@ -12,11 +12,10 @@ use {defmt_rtt as _, panic_probe as _};
 
 #[rtic::app(device = hal::stm32, peripherals = true)]
 mod app {
-    use crate::{command::temperature, peripherals::temperature::Temperature};
+    use crate::{model::Model, peripherals::temperature::TempSensor};
 
     use super::fmt;
 
-    use cookie_cutter::SerializeBuf;
     // monotonics
     use rtic_monotonics::{fugit::ExtU64 as _, stm32_tim2_monotonic, Monotonic as _};
     const MONO_FREQ: u32 = 31_250;
@@ -48,12 +47,10 @@ mod app {
     };
 
     // aliases
-    pub type TransferOut1 = dma::Transfer<
-        dma::stream::Stream0<hal::pac::DMA1>,
-        serial::Tx<hal::pac::USART1, gpio::gpioa::PA9<gpio::Alternate<{ gpio::AF7 }>>, serial::DMA>,
-        dma::MemoryToPeripheral,
-        &'static mut [u8],
-        dma::transfer::ConstTransfer,
+    pub type Tx1 = serial::usart::Tx<
+        hal::pac::USART1,
+        gpio::gpioa::PA9<gpio::Alternate<{ gpio::AF7 }>>,
+        serial::NoDMA,
     >;
 
     pub type TransferIn1 = dma::Transfer<
@@ -69,7 +66,9 @@ mod app {
     >;
 
     #[shared]
-    struct Shared {}
+    struct Shared {
+        model: Model,
+    }
 
     #[local]
     struct Local {
@@ -94,17 +93,16 @@ mod app {
 
         let streams = ctx.device.DMA1.split(&rcc);
 
-        let dma_out_cfg = dma::config::DmaConfig::default()
-            .circular_buffer(true)
-            .memory_increment(true);
-        let dma_in_cfg = dma::config::DmaConfig::default()
+        let dma_cfg = dma::config::DmaConfig::default()
             .transfer_complete_interrupt(true)
             .circular_buffer(true)
             .memory_increment(true);
 
         let gpioa = ctx.device.GPIOA.split(&mut rcc);
 
-        let usart_cfg = serial::FullConfig::default().baudrate(time::Bps(9600)); // so strange
+        let usart_cfg = serial::FullConfig::default()
+            .baudrate(time::Bps(9600)) // so strange
+            .receiver_timeout_us(1000);
 
         // HAL: USART configuration validation should absolutely be const
 
@@ -124,18 +122,6 @@ mod app {
         // ))
         // .split();
 
-        let tx1_buf = {
-            static mut BUF: [u8; 32] = [0; 32];
-
-            // SAFETY: exclusive reference only
-            #[allow(static_mut_refs)]
-            unsafe {
-                &mut BUF
-            }
-        };
-
-        let tx1_buf_ptr = tx1_buf as *mut [u8];
-
         let rx1_buf = {
             static mut BUF: [u8; 256] = [0; 256];
 
@@ -146,16 +132,10 @@ mod app {
             }
         };
 
-        let transfer_out_1 = streams.0.into_memory_to_peripheral_transfer(
-            tx1.enable_dma(),
-            &mut tx1_buf[..],
-            dma_out_cfg,
-        );
-
         let transfer_in_1 = streams.1.into_peripheral_to_memory_transfer(
             rx1.enable_dma(),
             &mut rx1_buf[..],
-            dma_in_cfg,
+            dma_cfg,
         );
 
         let (writer, reader) = {
@@ -163,28 +143,36 @@ mod app {
             SIGNAL.split()
         };
 
-        if let Err(_) = temp::spawn(Temperature::new(
-            transfer_out_1,
-            tx1_buf_ptr,
-            transfer_in_1,
-            reader,
-        )) {
+        if let Err(_) = temp::spawn(TempSensor::new(tx1, transfer_in_1, reader)) {
             fmt::panic!("Failed to spawn task.")
         }
 
-        fmt::unwrap!(pump::spawn());
+        // fmt::unwrap!(pump::spawn());
 
-        (Shared {}, Local { writer })
+        (
+            Shared {
+                model: Model::new(60),
+            },
+            Local { writer },
+        )
     }
 
-    #[task(binds = DMA1_CH1, local = [writer])]
-    fn dma_event(ctx: dma_event::Context) {
+    #[task(binds = USART1, local = [writer])]
+    fn usart1_event(ctx: usart1_event::Context) {
         ctx.local.writer.write(());
+
+        // terrible
+        let usart1 = unsafe { &*hal::pac::USART1::ptr() };
+        usart1.icr.write(|w| w.rtocf().set_bit());
     }
 
-    #[task]
-    async fn temp(_ctx: temp::Context, mut temperature: Temperature) {
-        match temperature.run().await {
+    #[task(shared = [model])]
+    async fn temp(ctx: temp::Context, mut temp_sensor: TempSensor) {
+        Mono::delay(4u64.secs()).await;
+
+        fmt::info!("begin...");
+
+        match temp_sensor.run(ctx.shared.model).await {
             Ok(_) => {
                 // shutdown
             }

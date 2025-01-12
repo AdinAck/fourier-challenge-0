@@ -12,6 +12,7 @@ defmt = [
     "stm32g4xx-hal/defmt",
     "cookie-cutter/defmt",
     "embedded-command/defmt",
+    "heapless/defmt-03",
 ]
 
 [dependencies]
@@ -44,6 +45,9 @@ stm32g4xx-hal = { git = "https://github.com/adinack/stm32g4xx-hal", features = [
 cookie-cutter = { git = "https://github.com/adinack/embedded-command" }
 dispatch-bundle = { git = "https://github.com/adinack/embedded-command" }
 embedded-command = { git = "https://github.com/adinack/embedded-command" }
+heapless = "0.8.0"
+futures = { version = "0.3.31", default-features = false }
+common = { path = "../common" }
 
 [[bin]]
 name = "main"

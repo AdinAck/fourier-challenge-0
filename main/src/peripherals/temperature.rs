@@ -1,21 +1,26 @@
 use cookie_cutter::SerializeIter;
 use embedded_command::command_buffer::CommandBuffer;
+use futures::future::try_join;
+use rtic::Mutex;
 use rtic_monotonics::{fugit::ExtU64, Monotonic};
 use rtic_sync::signal::SignalReader;
 
 use crate::{
-    app::{Mono, TransferIn1, TransferOut1},
-    command::temperature::{FromPeripheral, ToPeripheral},
+    app::{Mono, TransferIn1, Tx1},
     fmt,
+    model::Model,
 };
-
-pub type Measurement = i8;
+use common::{
+    command::temperature::{FromPeripheral, ToPeripheral},
+    types::temperature::Temperature,
+};
 
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Error {
     TransferInProgress,
     Ingestion(embedded_command::command_buffer::error::Overflow),
     Deserialize(cookie_cutter::error::Error),
+    Timeout,
 }
 
 impl From<embedded_command::command_buffer::error::Overflow> for Error {
@@ -30,27 +35,31 @@ impl From<cookie_cutter::error::Error> for Error {
     }
 }
 
-pub struct Temperature {
-    out_buf: *mut [u8],
+impl From<cookie_cutter::error::EndOfInput> for Error {
+    fn from(_value: cookie_cutter::error::EndOfInput) -> Self {
+        Self::Deserialize(cookie_cutter::error::Error::EndOfInput)
+    }
+}
 
-    transfer_out: TransferOut1,
+impl From<rtic_monotonics::TimeoutError> for Error {
+    fn from(_value: rtic_monotonics::TimeoutError) -> Self {
+        Self::Timeout
+    }
+}
+
+pub struct TempSensor {
+    tx: Tx1,
+
     transfer_in: TransferIn1,
 
     signal: SignalReader<'static, ()>,
     command_buf: CommandBuffer<256>,
 }
 
-impl Temperature {
-    pub const fn new(
-        transfer_out: TransferOut1,
-        out_buf: *mut [u8],
-        transfer_in: TransferIn1,
-        signal: SignalReader<'static, ()>,
-    ) -> Self {
+impl TempSensor {
+    pub const fn new(tx: Tx1, transfer_in: TransferIn1, signal: SignalReader<'static, ()>) -> Self {
         Self {
-            out_buf,
-
-            transfer_out,
+            tx,
             transfer_in,
 
             signal,
@@ -59,21 +68,32 @@ impl Temperature {
     }
 
     fn write_command(&mut self, command: ToPeripheral) -> Result<(), Error> {
+        use stm32g4xx_hal::{block, hal::serial::Write as _};
+
+        let mut buf = [0; 8];
         let mut n = 0;
-        fmt::unwrap!(
-            command.serialize_iter(unsafe { &mut *self.out_buf }.iter_mut().inspect(|_| {
-                n += 1;
-            }))
-        );
-        self.transfer_out.restart(|_| {});
+        command.serialize_iter(buf.iter_mut().inspect(|_| {
+            n += 1;
+        }))?;
+
+        for byte in &buf[..n] {
+            fmt::unwrap!(block!(self.tx.write(*byte)));
+        }
+
+        fmt::unwrap!(block!(self.tx.flush()));
 
         Ok(())
     }
 
     async fn read_command(&mut self) -> Result<FromPeripheral, Error> {
         loop {
-            self.transfer_in.peek_buffer(|buf, _remaining| {
-                self.command_buf.ingest(buf.iter())?;
+            self.signal.wait().await;
+
+            self.transfer_in.peek_buffer(|buf, remaining| {
+                fmt::debug!("buf: {}", buf[..buf.len() - remaining]);
+
+                self.command_buf
+                    .ingest(buf[..buf.len() - remaining].iter())?;
 
                 Ok::<_, embedded_command::command_buffer::error::Overflow>(())
             })?;
@@ -99,29 +119,40 @@ impl Temperature {
         }
     }
 
-    pub async fn read_temperature(&mut self) -> Result<Measurement, Error> {
+    pub async fn read_temperature(&mut self) -> Result<Temperature, Error> {
         // 1. send read command
         self.write_command(ToPeripheral::Read)?;
+        fmt::info!("sent read command");
 
-        // 2. receive measurement command
-        let FromPeripheral::Temperature(crate::command::temperature::Temperature(temp)) =
-            self.read_command().await?;
+        // 2. receive measurement command or timeout
+        let FromPeripheral::Temperature(temp) =
+            Mono::timeout_after(100u64.millis(), self.read_command()).await??;
+
+        fmt::info!("received temp: {}", temp);
 
         Ok(temp)
     }
 
-    pub async fn run(&mut self) -> Result<(), Error> {
+    pub async fn run(&mut self, mut model: impl Mutex<T = Model>) -> Result<(), Error> {
         self.transfer_in.start(|_| {});
 
         loop {
             // 1. fetch latest measurement
-            let measurement = self.read_temperature().await?;
-            // 2. update model
-            // 3. report faults
+            try_join(self.read_temperature(), async {
+                Mono::delay(1u64.secs()).await;
+                Ok(())
+            })
+            .await
+            .and_then(|(measurement, _)| {
+                // 2. update model
+                model.lock(|model| {
+                    model.push_temperature(measurement);
+                });
 
-            Mono::delay(1u64.secs()).await;
+                Ok(())
+            })?;
         }
     }
 }
 
-unsafe impl Send for Temperature {}
+unsafe impl Send for TempSensor {}

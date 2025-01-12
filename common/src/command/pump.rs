@@ -1,5 +1,6 @@
 use cookie_cutter::encoding::vanilla;
-use dispatch_bundle::bundle;
+
+use crate::types::pump::PumpState;
 
 // NOTE: this pattern is used a lot,
 // maybe i should make another higher level
@@ -13,29 +14,19 @@ const NOOP_ADDR: u8 = 0xff;
 #[derive(vanilla::SerializeIter)]
 #[repr(u8)]
 pub enum ToPeripheral {
-    Set(State) = 0xca,
+    Set(PumpState) = 0xca,
     Get = 0x11,
 
     NoOp = NOOP_ADDR,
 }
 
-#[bundle(Actor)]
 #[derive(vanilla::SerializeIter)]
 #[repr(u8)]
 pub enum FromPeripheral {
-    State = 0xaa,
-    Fault = 0x1f,
+    PumpState(PumpState) = 0xaa,
+    Fault(Fault) = 0x1f,
 
     NoOp = NOOP_ADDR,
-}
-
-trait Actor {}
-
-#[derive(vanilla::SerializeIter)]
-#[repr(u8)]
-pub enum State {
-    On = 0x5e,
-    Off = 0xed,
 }
 
 #[derive(vanilla::SerializeIter)]
@@ -44,10 +35,3 @@ pub enum Fault {
     Temperature = 0xde,
     Current = 0xad,
 }
-
-#[derive(vanilla::SerializeIter)]
-pub struct NoOp;
-
-impl Actor for State {}
-impl Actor for Fault {}
-impl Actor for NoOp {}

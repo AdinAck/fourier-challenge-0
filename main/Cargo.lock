@@ -70,9 +70,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
+name = "common"
+version = "0.1.0"
+dependencies = [
+ "cookie-cutter",
+]
+
+[[package]]
 name = "cookie-cutter"
 version = "0.1.0"
-source = "git+https://github.com/adinack/embedded-command#3fc53f888f60d6e41eb7ce39566eceeda98de93a"
+source = "git+https://github.com/adinack/embedded-command#c4dd1ec27bb87ff9af66f6bc3494d70c34deeef5"
 dependencies = [
  "defmt",
  "fill-array",
@@ -163,7 +170,7 @@ dependencies = [
 [[package]]
 name = "dispatch-bundle"
 version = "0.1.0"
-source = "git+https://github.com/adinack/embedded-command#3fc53f888f60d6e41eb7ce39566eceeda98de93a"
+source = "git+https://github.com/adinack/embedded-command#c4dd1ec27bb87ff9af66f6bc3494d70c34deeef5"
 dependencies = [
  "macros",
 ]
@@ -190,7 +197,7 @@ dependencies = [
 [[package]]
 name = "embedded-command"
 version = "0.1.0"
-source = "git+https://github.com/adinack/embedded-command#3fc53f888f60d6e41eb7ce39566eceeda98de93a"
+source = "git+https://github.com/adinack/embedded-command#c4dd1ec27bb87ff9af66f6bc3494d70c34deeef5"
 dependencies = [
  "cookie-cutter",
  "defmt",
@@ -304,10 +311,46 @@ dependencies = [
 ]
 
 [[package]]
+name = "futures"
+version = "0.3.31"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "65bc07b1a8bc7c85c5f2e110c476c7389b4554ba72af57d8445ea63a576b0876"
+dependencies = [
+ "futures-channel",
+ "futures-core",
+ "futures-io",
+ "futures-sink",
+ "futures-task",
+ "futures-util",
+]
+
+[[package]]
+name = "futures-channel"
+version = "0.3.31"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2dff15bf788c671c1934e366d07e30c1814a8ef514e1af724a602e8a2fbe1b10"
+dependencies = [
+ "futures-core",
+ "futures-sink",
+]
+
+[[package]]
 name = "futures-core"
 version = "0.3.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "05f29059c0c2090612e8d742178b0580d2dc940c837851ad723096f87af6663e"
+
+[[package]]
+name = "futures-io"
+version = "0.3.31"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9e5c1b78ca4aae1ac06c48a526a655760685149f0d465d21f37abfe57ce075c6"
+
+[[package]]
+name = "futures-sink"
+version = "0.3.31"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e575fab7d1e0dcb8d0c7bcf9a63ee213816ab51902e6d244a95819acacf1d4f7"
 
 [[package]]
 name = "futures-task"
@@ -322,6 +365,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9fa08315bb612088cc391249efdc3bc77536f16c91f6cf495e6fbe85b20a4a81"
 dependencies = [
  "futures-core",
+ "futures-sink",
  "futures-task",
  "pin-project-lite",
  "pin-utils",
@@ -354,6 +398,7 @@ version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0bfb9eb618601c89945a70e254898da93b13be0388091d42117462b265bb3fad"
 dependencies = [
+ "defmt",
  "hash32",
  "stable_deref_trait",
 ]
@@ -377,7 +422,7 @@ checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 [[package]]
 name = "macros"
 version = "0.1.0"
-source = "git+https://github.com/adinack/embedded-command#3fc53f888f60d6e41eb7ce39566eceeda98de93a"
+source = "git+https://github.com/adinack/embedded-command#c4dd1ec27bb87ff9af66f6bc3494d70c34deeef5"
 dependencies = [
  "Inflector",
  "proc-macro2",
@@ -389,6 +434,7 @@ dependencies = [
 name = "main"
 version = "0.1.0"
 dependencies = [
+ "common",
  "cookie-cutter",
  "cortex-m",
  "cortex-m-rt",
@@ -397,6 +443,8 @@ dependencies = [
  "defmt-rtt",
  "dispatch-bundle",
  "embedded-command",
+ "futures",
+ "heapless",
  "panic-halt",
  "panic-probe",
  "rtic",
@@ -692,7 +740,7 @@ dependencies = [
 [[package]]
 name = "stm32g4xx-hal"
 version = "0.0.2"
-source = "git+https://github.com/adinack/stm32g4xx-hal#802b23d3476a3ccc60dcd00bd29938391939ccf2"
+source = "git+https://github.com/adinack/stm32g4xx-hal#60312daafddbbb19b6a2a6007c3d58e6cb29cb2b"
 dependencies = [
  "bare-metal 0.2.5",
  "bitflags",

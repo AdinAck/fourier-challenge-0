@@ -4,3 +4,4 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+cookie-cutter = { git = "https://github.com/adinack/embedded-command" }
