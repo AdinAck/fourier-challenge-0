@@ -3,8 +3,9 @@ use rtic_monotonics::Monotonic;
 
 use common::types::{pump::PumpState, temperature::Temperature};
 
-use crate::app::Mono;
+use crate::{app::Mono, fmt};
 
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Entry {
     #[allow(unused)] // unused in example implementation
     timestamp: <Mono as Monotonic>::Instant,
@@ -65,16 +66,20 @@ impl Model {
         // about the system i will use the
         // simplest possible control scheme
 
-        let Some(entry) = self.history.last() else {
+        let Some(entry) = self.history.oldest_ordered().last() else {
             // cool by default because likely
             // cool is safe
             return PumpState::On;
         };
 
-        if entry.temperature > self.target_temp {
+        let target = if entry.temperature > self.target_temp {
             PumpState::On
         } else {
             PumpState::Off
-        }
+        };
+
+        fmt::info!("last entry: {}, target: {}", entry, target);
+
+        target
     }
 }

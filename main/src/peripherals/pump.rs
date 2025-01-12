@@ -125,12 +125,12 @@ impl Pump {
         // 1. send pump state to pump
         let cmd = ToPeripheral::Set(target);
         self.write_command(cmd)?;
-        fmt::info!("sent cmd: {}", cmd);
+        fmt::trace!("sent cmd: {}", cmd);
 
         // 2. validate pump response
         match Mono::timeout_after(100u64.millis(), self.read_command()).await?? {
             FromPeripheral::PumpState(state) => {
-                fmt::info!("received state: {}", state);
+                fmt::trace!("received state: {}", state);
 
                 if state == target {
                     Ok(())

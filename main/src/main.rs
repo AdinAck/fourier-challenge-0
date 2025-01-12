@@ -230,7 +230,7 @@ mod app {
             }
             Err(fault) => {
                 // handle fault
-                fmt::error!("{}", fault);
+                fmt::panic!("{}", fault);
             }
         }
     }
@@ -248,7 +248,7 @@ mod app {
             }
             Err(fault) => {
                 // handle fault
-                fmt::error!("{}", fault);
+                fmt::panic!("{}", fault);
             }
         }
     }

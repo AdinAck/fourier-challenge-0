@@ -122,13 +122,13 @@ impl TempSensor {
     pub async fn read_temperature(&mut self) -> Result<Temperature, Error> {
         // 1. send read command
         self.write_command(ToPeripheral::Read)?;
-        fmt::info!("sent read command");
+        fmt::trace!("sent read command");
 
         // 2. receive measurement command or timeout
         let FromPeripheral::Temperature(temp) =
             Mono::timeout_after(100u64.millis(), self.read_command()).await??;
 
-        fmt::info!("received temp: {}", temp);
+        fmt::trace!("received temp: {}", temp);
 
         Ok(temp)
     }

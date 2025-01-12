@@ -4,7 +4,7 @@
 mod fmt;
 
 use common::{
-    command,
+    command::{self, pump::Fault},
     types::{pump::PumpState, temperature::Temperature},
 };
 use cookie_cutter::SerializeIter;
@@ -28,8 +28,10 @@ bind_interrupts!(struct Irqs {
     USART2 => usart::InterruptHandler<peripherals::USART2>;
 });
 
-static STATE: Mutex<ThreadModeRawMutex, (Temperature, PumpState)> =
-    Mutex::new((25, PumpState::Off));
+type FakeFault = bool;
+
+static STATE: Mutex<ThreadModeRawMutex, (Temperature, PumpState, FakeFault)> =
+    Mutex::new((25, PumpState::Off, false));
 
 #[embassy_executor::task]
 async fn temp(mut uart: Uart<'static, mode::Async>) {
@@ -89,7 +91,7 @@ async fn pump(mut uart: Uart<'static, mode::Async>) {
     loop {
         let mut buf = [0; 1];
         let n = fmt::unwrap!(uart.read_until_idle(&mut buf).await);
-        fmt::debug!("{}", buf[..n]);
+        fmt::trace!("{}", buf[..n]);
         fmt::unwrap!(cmd_buf.ingest(buf[..n].iter()));
 
         let mut iter = cmd_buf.iter();
@@ -107,7 +109,7 @@ async fn pump(mut uart: Uart<'static, mode::Async>) {
         let memento = iter.capture();
         cmd_buf.flush(memento);
 
-        fmt::info!("received cmd: {}.", cmd);
+        fmt::trace!("received cmd: {}.", cmd);
 
         let mut buf = [0; 8];
         let mut n = 0;
@@ -115,12 +117,16 @@ async fn pump(mut uart: Uart<'static, mode::Async>) {
         let outgoing = {
             let mut state = STATE.lock().await;
 
-            match cmd {
-                ToPeripheral::Get => FromPeripheral::PumpState(state.1),
-                ToPeripheral::Set(new_state) => {
-                    state.1 = new_state;
+            if state.2 {
+                FromPeripheral::Fault(Fault::Current)
+            } else {
+                match cmd {
+                    ToPeripheral::Get => FromPeripheral::PumpState(state.1),
+                    ToPeripheral::Set(new_state) => {
+                        state.1 = new_state;
 
-                    FromPeripheral::PumpState(state.1)
+                        FromPeripheral::PumpState(state.1)
+                    }
                 }
             }
         };
@@ -131,15 +137,17 @@ async fn pump(mut uart: Uart<'static, mode::Async>) {
         fmt::debug!("{}", buf[..n]);
         fmt::unwrap!(uart.write(&buf[..n]).await);
 
-        fmt::info!("sent pump state");
+        fmt::trace!("sent pump state");
     }
 }
 
 #[embassy_executor::task]
 async fn simulator() {
-    loop {
+    for _ in 0..50 {
         {
             let mut state = STATE.lock().await;
+
+            fmt::info!("state: {}", *state);
 
             match state.1 {
                 PumpState::Off => state.0 += 1,
@@ -149,6 +157,8 @@ async fn simulator() {
 
         Timer::after_millis(500).await;
     }
+
+    STATE.lock().await.2 = true;
 }
 
 #[embassy_executor::main]
